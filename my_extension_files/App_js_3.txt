@@ -1,0 +1,67 @@
+ = instanceIndex.toVar(); // So we can compare in the loop
+    // const totalCount = uint( positionBuffer.length );
+
+    Loop(count, ({ i }) => {
+      console.log(i);
+      // Skip self
+      If(i.notEqual(idxVar), () => {
+        // Position of the other particle
+        const otherPos = positionBuffer.element(i).toVec3().toVar();
+
+        // Vector from other -> me
+        const deltaPos = position.sub(otherPos).toVar();
+        const distSq = deltaPos.dot(deltaPos).toVar();
+        // const dist = distSq.sqrt(); // or “sqrt(distSq)”
+        const dir = deltaPos.normalize();
+
+        const repulsion = dir.mul(repulsionStrength).div(distSq.add(softening));
+        force.addAssign(repulsion);
+
+        const attraction = dir
+          .mul(attractionStrength)
+          .div(distSq.add(softening))
+          .negate(); // negative direction => pulls them in
+        force.addAssign(attraction);
+      });
+    });
+
+    //Euler integration
+
+    velocity.addAssign(force.mul(delta));
+
+    // Apply dampening to velocity
+    velocity.mulAssign(float(1).sub(dampening)); // Reduces velocity over time
+
+    // position
+
+    position.addAssign(velocity.mul(delta));
+  });
+  updateCompute = update_WebGPU().compute(count);
+
+  // nodes
+
+  material.positionNode = positionBuffer.toAttribute();
+
+  material.colorNode = vec3(0, 1, 0);
+
+  // mesh
+
+  const geometry = new THREE.PlaneGeometry(0.01, 0.01);
+  const mesh = new THREE.InstancedMesh(geometry, material, count);
+  scene.add(mesh);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+async function update() {
+  controls.update();
+
+  renderer.compute(updateCompute);
+  renderer.render(scene, camera);
+}
+

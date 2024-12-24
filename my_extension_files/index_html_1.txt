@@ -1,0 +1,21 @@
+--- FILENAME: index.html
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>App_template_2024</title>
+    <link rel="icon" type="image/x-icon" href="/resources/favicon.ico">
+    <style>
+      body,
+      html {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/game/App.js"></script>
+  </body>
+</html>
+
