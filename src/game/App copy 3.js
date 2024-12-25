@@ -29,11 +29,14 @@ import { GridHelper } from "/components/GridHelper.webgpu.js";
 // Global Variables
 let camera, scene, renderer, controls;
 let createCompute, updateCompute;
+let linePositions, lineGeometry, lineMaterial;
 
 // Buffers
 const count = Math.pow(2, 3);
 const positionBuffer = instancedArray(count, "vec3");
 const velocityBuffer = instancedArray(count, "vec3");
+const edgePositionBuffer = instancedArray(count, "vec3");
+const edgeActiveBuffer = instancedArray(count, "uint");
 
 // Uniforms
 const uniforms = {
@@ -42,9 +45,6 @@ const uniforms = {
   repulsionStrength: uniform(0.01),
   dampening: uniform(0.001),
 };
-
-//init params
-const initPosSpread = vec3(2, 1, 2);
 
 create();
 
@@ -58,6 +58,7 @@ function create() {
 
   setupComputeNodes();
   createParticles();
+  createEdges();
 
   window.addEventListener("resize", onWindowResize);
 }
@@ -131,7 +132,9 @@ function setupComputeNodes() {
   const create_WebGPU = Fn(() => {
     const position = positionBuffer.element(instanceIndex);
     const velocity = velocityBuffer.element(instanceIndex);
+    const edgePosition = edgePositionBuffer.element(instanceIndex);
 
+    const edgeActive = edgeActiveBuffer.element(instanceIndex);
 
     const basePosition = vec3(
       hash(instanceIndex.add(uint(Math.random() * 0xffffff))),
@@ -139,8 +142,20 @@ function setupComputeNodes() {
       hash(instanceIndex.add(uint(Math.random() * 0xffffff)))
     )
       .sub(0.5)
-      .mul(vec3(initPosSpread.x, initPosSpread.y, initPosSpread.z));
+      .mul(vec3(5, 2, 5));
     position.assign(basePosition);
+
+    const baseEdgePosition = vec3(
+      hash(instanceIndex.add(uint(Math.random() * 0xffffff))),
+      hash(instanceIndex.add(uint(Math.random() * 0xffffff))),
+      hash(instanceIndex.add(uint(Math.random() * 0xffffff)))
+    )
+      .sub(0.5)
+      .mul(vec3(5, 0.2, 5));
+    edgePosition.assign(baseEdgePosition);
+
+    const baseEdgeActive = uint(hash(instanceIndex).mul(100).mod(2));
+    edgeActive.assign(baseEdgeActive);
 
     const phi = hash(instanceIndex.add(uint(Math.random() * 0xffffff)))
       .mul(PI)
@@ -159,9 +174,16 @@ function setupComputeNodes() {
 
     const position = positionBuffer.element(instanceIndex);
     const velocity = velocityBuffer.element(instanceIndex);
+    const edgePosition = edgePositionBuffer.element(instanceIndex);
+    const edgeActive = edgeActiveBuffer.element(instanceIndex);
 
     const force = vec3(0).toVar();
     const idxVar = instanceIndex.toVar();
+
+    const linePositionArray = lineGeometry.attributes.position.array;
+    let lineIndex = 0; // Tracks how many lines are active
+
+    // linePositionArray.fill(0);
 
     Loop(count, ({ i }) => {
       If(i.notEqual(idxVar), () => {
@@ -169,6 +191,7 @@ function setupComputeNodes() {
         const deltaPos = position.sub(otherPos).toVar();
         const distSq = deltaPos.dot(deltaPos).toVar();
         const dir = deltaPos.normalize();
+
 
         const repulsion = dir
           .mul(uniforms.repulsionStrength)
@@ -180,8 +203,22 @@ function setupComputeNodes() {
           .div(distSq.add(0.05))
           .negate();
         force.addAssign(attraction);
+
+        linePositionArray[lineIndex + 0] = 0
+        linePositionArray[lineIndex + 1] = 0
+        linePositionArray[lineIndex + 2] = 0;
+
+        linePositionArray[lineIndex + 3] = 1
+        linePositionArray[lineIndex + 4] = 1
+        linePositionArray[lineIndex + 5] = 1
+   
       });
+      lineIndex+=6;
+      console.log(linePositionArray)
     });
+
+    // Mark geometry as updated
+    lineGeometry.attributes.position.needsUpdate = true;
 
     //Euler integration
     velocity.addAssign(force.mul(delta));
@@ -209,6 +246,24 @@ function createParticles() {
   scene.add(mesh);
 }
 
+function createEdges() {
+  // Buffer for line positions (2 points per line, 3 components each: x, y, z)
+  linePositions = new Float32Array(count * count * 6); // Maximum possible connections
+  lineGeometry = new THREE.BufferGeometry();
+  lineGeometry.setAttribute(
+    "position",
+    new THREE.BufferAttribute(linePositions, 3)
+  );
+
+  lineMaterial = new THREE.LineBasicMaterial({
+    color: 0x00ffff, // Cyan for edges
+    transparent: true,
+    opacity: 0.7,
+  });
+
+  const lineSegments = new THREE.LineSegments(lineGeometry, lineMaterial);
+  scene.add(lineSegments);
+}
 
 function onWindowResize() {
   camera.aspect = window.innerWidth / window.innerHeight;
